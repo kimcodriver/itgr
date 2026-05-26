@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #060818;
+  --color-text: #e6e8f5;
+  --color-comply: #10b981;
+  --color-partial: #f59e0b;
+  --color-non: #f43f5e;
+  --color-na: #94a3b8;
+  --color-indigo: #818cf8;
+  --font-sans: "Inter", "IBM Plex Sans Thai", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --bg: #060818;
+  --text: #e6e8f5;
+  --text-muted: rgba(230, 232, 245, 0.62);
+  --text-dim: rgba(230, 232, 245, 0.42);
+  --glass-from: rgba(255, 255, 255, 0.07);
+  --glass-to: rgba(255, 255, 255, 0.025);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-soft-from: rgba(255, 255, 255, 0.045);
+  --glass-soft-to: rgba(255, 255, 255, 0.018);
+  --glass-soft-border: rgba(255, 255, 255, 0.07);
+  --hover-bg: rgba(255, 255, 255, 0.06);
+  --track-bg: rgba(255, 255, 255, 0.05);
+}
+:root[data-theme="light"] {
+  --bg: #f5f7fb;
+  --text: #0f172a;
+  --text-muted: rgba(15, 23, 42, 0.68);
+  --text-dim: rgba(15, 23, 42, 0.48);
+  --glass-from: rgba(255, 255, 255, 0.80);
+  --glass-to: rgba(255, 255, 255, 0.60);
+  --glass-border: rgba(15, 23, 42, 0.10);
+  --glass-soft-from: rgba(255, 255, 255, 0.66);
+  --glass-soft-to: rgba(255, 255, 255, 0.42);
+  --glass-soft-border: rgba(15, 23, 42, 0.08);
+  --hover-bg: rgba(15, 23, 42, 0.05);
+  --track-bg: rgba(15, 23, 42, 0.07);
+}
+
+html, body { background: var(--bg); color: var(--text); min-height: 100%; }
+body { font-family: var(--font-sans); }
+
+.glass {
+  background: linear-gradient(135deg, var(--glass-from), var(--glass-to));
+  backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px 0 rgba(0,0,0,0.3), inset 0 1px 0 0 rgba(255,255,255,0.06);
+}
+.glass-soft {
+  background: linear-gradient(135deg, var(--glass-soft-from), var(--glass-soft-to));
+  border: 1px solid var(--glass-soft-border);
+  backdrop-filter: blur(14px);
+}
+.t-muted { color: var(--text-muted); }
+.t-dim   { color: var(--text-dim); }
+.hover-bg:hover { background: var(--hover-bg); }
+
+.marker { width: 8px; height: 8px; border-radius: 9999px; display: inline-block; }

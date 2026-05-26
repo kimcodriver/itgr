@@ -1,0 +1,35 @@
+{
+  "name": "autocorp-itgr-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autocorp ITGR Audit Tracker — FY2026 cycle (Marubeni Group ITGR FY2025 framework)",
+  "scripts": {
+    "dev": "next dev --turbopack -p 4040",
+    "build": "next build",
+    "start": "next start -p 4040",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:seed": "tsx --env-file=.env.local scripts/seed-controls.ts",
+    "db:reset": "supabase db reset"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.45.4",
+    "next": "16.2.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "16.2.6",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.6.0"
+  }
+}
