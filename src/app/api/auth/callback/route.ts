@@ -17,11 +17,16 @@ export async function GET(req: NextRequest) {
   const { data, error } = await sb.auth.exchangeCodeForSession(code);
   if (error || !data.user) return NextResponse.redirect(`${origin}/sign-in?error=${encodeURIComponent(error?.message || "exchange-failed")}`);
 
-  const domain = (data.user.email || "").split("@")[1]?.toLowerCase();
-  const allowed = (process.env.ALLOWED_EMAIL_DOMAIN || "autocorp.co.th").toLowerCase();
-  if (domain !== allowed) {
-    await sb.auth.signOut();
-    return NextResponse.redirect(`${origin}/sign-in?error=domain-not-allowed`);
+  // Optional email-domain allow-list. Leave ALLOWED_EMAIL_DOMAIN unset to accept any
+  // Google account. New users always land at role=observer (read-only) until the
+  // audit_lead promotes them, so this is safe to leave open for invite-by-promotion.
+  const allowed = (process.env.ALLOWED_EMAIL_DOMAIN || "").toLowerCase().trim();
+  if (allowed) {
+    const domain = (data.user.email || "").split("@")[1]?.toLowerCase();
+    if (domain !== allowed) {
+      await sb.auth.signOut();
+      return NextResponse.redirect(`${origin}/sign-in?error=domain-not-allowed`);
+    }
   }
 
   await logEvent({

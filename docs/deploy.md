@@ -9,7 +9,7 @@ last_updated: 2026-05-26
 
 > เป้าหมาย: จาก zero ถึงทีม IT เข้าใช้งานได้จริงภายใน ~90 นาที (ถ้า account ทั้งหมดพร้อม)
 >
-> Stack สุดท้าย: **Supabase** (Postgres + Auth) + **Vercel** (Next.js hosting) + **Google Workspace** (SSO กับโดเมน `autocorp.co.th`)
+> Stack สุดท้าย: **Supabase** (Postgres + Auth) + **Vercel** (Next.js hosting) + **Google OAuth** (รับทุก Google account โดย default — จะ lock เป็นโดเมนเดียวก็ได้ผ่าน env)
 >
 > ก่อน start อ่าน [`../spec/self-audit.md`](../../spec/self-audit.md) เพื่อรู้ว่า control ไหนของ ITGR ระบบนี้ต้องผ่าน — และเอกสาร selection memo (control C1-5) ต้องเสร็จก่อน production deploy
 
@@ -84,13 +84,20 @@ psql "$SUPABASE_DB_URL" -f supabase/migrations/0003_helpers.sql
 2. paste เนื้อหา `0003_helpers.sql` ทั้งไฟล์
 3. กด **Run**
 
-### 2.3 ตั้งค่า "App allowed domain" parameter
+### 2.3 (Optional) จำกัดโดเมน
 
-ใน SQL Editor รัน:
+ระบบนี้ **default รับทุก Google account** ผู้ใช้ใหม่จะถูกสร้างเป็น `observer` (อ่านอย่างเดียว) โดยอัตโนมัติ audit_lead เลือก promote คนที่ใช่เป็น `it_engineer` หรือ `audit_lead` เอง
+
+ถ้าอยาก **lock เฉพาะโดเมนเดียว** (เช่น hardening เพิ่ม) ทำ 2 อย่าง:
+
 ```sql
+-- ใน Supabase SQL Editor
 alter database postgres set app.allowed_domain = 'autocorp.co.th';
 ```
-trigger `handle_new_user` ใช้ค่านี้บล็อก sign-in จากโดเมนอื่น
+
+แล้วใน Phase 5 ตอนตั้ง Vercel env ใส่ `ALLOWED_EMAIL_DOMAIN=autocorp.co.th` ด้วย (ใช้ทั้ง DB trigger + app check 2 ชั้น)
+
+ปลดล็อกภายหลังด้วย `alter database postgres reset app.allowed_domain;`
 
 ### 2.4 เก็บ keys
 
@@ -115,12 +122,14 @@ trigger `handle_new_user` ใช้ค่านี้บล็อก sign-in จ
 1. ไป https://console.cloud.google.com → เลือก project ของ Autocorp (หรือสร้างใหม่ `autocorp-itgr-fy2026`)
 2. ซ้ายมือ **APIs & Services → OAuth consent screen**
 3. กรอก:
-   - **User type:** `Internal` ← สำคัญ! เลือก Internal เท่านั้น ผู้ใช้ภายนอกโดเมนเข้าไม่ได้แม้พยายาม
-   - **App name:** `Autocorp ITGR Audit Tracker`
-   - **User support email:** `it-audit@autocorp.co.th`
-   - **App logo:** อัปโหลด logo Autocorp (optional)
-   - **Authorized domains:** `autocorp.co.th`
-   - **Developer contact:** `ckawin@autocorp.co.th`
+   - **User type:** เลือกตาม policy ที่ต้องการ
+     - `Internal` = ต้องมี Google Workspace; เข้าเฉพาะคนในองค์กรเท่านั้น
+     - `External` = รับ Google account ทุกประเภท (default ของระบบนี้) ผู้ใช้ใหม่เป็น observer
+   - **App name:** `ITGR Audit Tracker`
+   - **User support email:** อีเมลของ audit lead
+   - **App logo:** อัปโหลด logo (optional)
+   - **Authorized domains:** ใส่โดเมนของ webapp (เช่น `vercel.app` หรือ `autocorp.co.th` ถ้าใช้ custom)
+   - **Developer contact:** อีเมลของผู้ดูแลระบบ
 4. **Scopes:** เพิ่ม `email`, `profile`, `openid` ← แค่นี้พอ
 5. กด **Save and continue**
 
@@ -185,8 +194,8 @@ cp .env.example .env.local
 #    NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 #    NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
 #    SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...
-#    ALLOWED_EMAIL_DOMAIN=autocorp.co.th
 #    APP_ENV=development
+#    # ALLOWED_EMAIL_DOMAIN=autocorp.co.th   ← optional: uncomment เพื่อ lock โดเมน
 
 # 4. Seed 96 controls
 pnpm db:seed
@@ -201,10 +210,9 @@ pnpm dev
 
 1. เปิด http://localhost:4040 → จะ redirect ไป `/sign-in`
 2. กด **เข้าสู่ระบบด้วย Google**
-3. Google popup → เลือก account `ckawin@autocorp.co.th`
-4. ถ้า:
-   - ✅ Email โดเมน `@autocorp.co.th` → กลับมาที่ `/` (dashboard ที่ยังว่าง — observer role)
-   - ❌ Email อื่น → ถูกปฏิเสธที่ callback (`domain-not-allowed`)
+3. Google popup → เลือก account ใดก็ได้
+4. กลับมาที่ `/` (dashboard ที่ยังว่าง — role `observer` โดย default)
+5. ถ้าตั้ง `ALLOWED_EMAIL_DOMAIN` ไว้ + login ด้วย email โดเมนอื่น → ถูกปฏิเสธที่ callback (`domain-not-allowed`)
 
 ### 4.2 Promote ตัวเองเป็น audit_lead
 
@@ -251,9 +259,9 @@ Refresh `/` → header ขวาบนจะเห็น role pill เปลี�
 | `NEXT_PUBLIC_SUPABASE_URL`        | `https://<ref>.supabase.co` | Production + Preview |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY`   | `eyJhbGci...` (anon)        | Production + Preview |
 | `SUPABASE_SERVICE_ROLE_KEY`       | `eyJhbGci...` (service)     | Production + Preview |
-| `ALLOWED_EMAIL_DOMAIN`            | `autocorp.co.th`            | Production + Preview |
 | `APP_ENV`                         | `production`                | Production |
 | `NEXT_PUBLIC_APP_URL`             | `https://<your>.vercel.app` | Production |
+| `ALLOWED_EMAIL_DOMAIN`            | `autocorp.co.th` *(optional)* | Production + Preview |
 
 > ⚠️ **service_role key เป็น secret** — Vercel เก็บแบบ encrypted แต่ห้ามใส่ตรง `NEXT_PUBLIC_` ผิดข้าง
 
@@ -349,8 +357,9 @@ where category_short = 'Cat 5 — Network';
 ### 7.1 ทดสอบความปลอดภัย
 
 ```sh
-# 1. ทดสอบโดเมนอื่น sign in ไม่ได้
+# 1. (เฉพาะถ้าตั้ง ALLOWED_EMAIL_DOMAIN) ทดสอบโดเมนอื่น sign in ไม่ได้
 # → เปิด incognito → sign in ด้วย gmail.com → ควรเห็น error "domain-not-allowed"
+# → ถ้าไม่ได้ตั้ง env นี้ → user ใหม่จะกลายเป็น observer (อ่านอย่างเดียว) ปกติ
 
 # 2. ทดสอบ engineer แก้ verdict ไม่ได้
 # → sign in ด้วย account it_engineer → ไป /controls/1
@@ -444,9 +453,10 @@ copy column `verdicts` ไป save เป็น JSON file ส่ง HQ พร้
 
 ## Troubleshooting
 
-### "domain-not-allowed" แม้ sign in ด้วย @autocorp.co.th
-- ตรวจ Supabase param: `select current_setting('app.allowed_domain', true);` → ต้อง return `autocorp.co.th`
-- ถ้าเป็น null → รัน `alter database postgres set app.allowed_domain = 'autocorp.co.th';` อีกครั้ง
+### "domain-not-allowed" แม้ sign in ด้วยโดเมนที่คิดว่าถูก
+- ตรวจ Supabase param: `select current_setting('app.allowed_domain', true);` → ถ้าตั้งไว้ ต้องตรงกับโดเมนที่ login
+- ถ้าอยาก **ปลด** restriction ทั้งหมด: รัน `alter database postgres reset app.allowed_domain;` และลบ env `ALLOWED_EMAIL_DOMAIN` ใน Vercel
+- ถ้าอยาก **เปลี่ยน** โดเมน: รัน `alter database postgres set app.allowed_domain = 'other.com';` และอัปเดต Vercel env ตามด้วย
 
 ### Sign in เด้งกลับ /sign-in?error=...
 - ตรวจ Vercel logs (Project → Logs → Runtime) — ปกติเป็น redirect URL mismatch

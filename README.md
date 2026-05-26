@@ -15,7 +15,7 @@ Next.js 16 (App Router) on Vercel
   ▼  service-role key (server-only)
 Supabase
   ├── Postgres (controls, evidence_links, audit_log, snapshots, profiles)
-  ├── Auth     (Google OAuth restricted to @autocorp.co.th)
+  ├── Auth     (Google OAuth · domain allow-list is optional, see ALLOWED_EMAIL_DOMAIN)
   └── (no Storage — evidence files live in Google Drive)
 ```
 
@@ -42,7 +42,8 @@ pnpm i        # or npm i
 
 # 1. Provision Supabase
 #    a. Create a project (Singapore region)
-#    b. Enable Google OAuth provider; set the OAuth client to hosted-domain=autocorp.co.th
+#    b. Enable Google OAuth provider in Supabase Auth → Providers → Google.
+#       (To restrict to a hosted domain, set ALLOWED_EMAIL_DOMAIN env later. Optional.)
 #    c. Run the migrations in order:
 psql "$SUPABASE_DB_URL" -f supabase/migrations/0001_init.sql
 psql "$SUPABASE_DB_URL" -f supabase/migrations/0002_rls.sql

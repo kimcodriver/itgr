@@ -30,16 +30,20 @@ language sql stable as $$
   from public.controls
 $$;
 
--- Auto-create a profile row on first Google sign-in.
--- Triggered by Supabase Auth; if email domain matches allow-list,
--- create profile with default 'observer' role + active=true.
+-- Auto-create a profile row on first sign-in.
+-- New users always land at role=observer (read-only). audit_lead must promote
+-- them to it_engineer (or audit_lead) via SQL or admin UI.
+--
+-- Optional domain allow-list: set the Postgres parameter to enable.
+--   alter database postgres set app.allowed_domain = 'autocorp.co.th';
+-- Leave it unset to accept any email/Google account (default for open invite).
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
-  v_domain text := lower(split_part(new.email, '@', 2));
-  v_allowed text := coalesce(current_setting('app.allowed_domain', true), 'autocorp.co.th');
+  v_domain  text := lower(split_part(new.email, '@', 2));
+  v_allowed text := nullif(trim(coalesce(current_setting('app.allowed_domain', true), '')), '');
 begin
-  if v_domain <> v_allowed then
+  if v_allowed is not null and v_domain <> v_allowed then
     raise exception 'email domain % not allowed', v_domain;
   end if;
   insert into public.profiles (id, email, display_name, role)

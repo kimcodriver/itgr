@@ -9,10 +9,11 @@ export default function SignIn() {
         <div className="w-14 h-14 mx-auto rounded-2xl grid place-items-center text-white text-2xl font-black"
              style={{ background: "radial-gradient(circle at 30% 30%, #818cf8, #4338ca 70%)" }}>IT</div>
         <div>
-          <div className="text-[10px] uppercase tracking-widest t-dim">Autocorp · Marubeni ITGR FY2025</div>
+          <div className="text-[10px] uppercase tracking-widest t-dim">Marubeni ITGR FY2025</div>
           <div className="text-xl font-bold">เข้าสู่ระบบเพื่อดูสถานะ Audit</div>
           <div className="text-xs t-muted mt-2">
-            เฉพาะอีเมล <code>@autocorp.co.th</code> เท่านั้น (Google Workspace SSO)
+            เข้าด้วย Google account ใดก็ได้ · ผู้ใช้ใหม่จะเริ่มเป็น <code>observer</code> (ดูอย่างเดียว)
+            จนกว่า audit lead จะ promote
           </div>
         </div>
         <form action={signInWithGoogle}>
