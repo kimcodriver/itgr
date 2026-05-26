@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Autocorp ITGR Audit Tracker — FY2026 cycle (Marubeni Group ITGR FY2025 framework)",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "next dev --turbopack -p 4040",
     "build": "next build",

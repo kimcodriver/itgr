@@ -22,9 +22,9 @@ export async function rsc() {
   return createServerClient(URL, ANON, {
     cookies: {
       getAll: () => store.getAll(),
-      setAll: (list) => {
+      setAll: (list: Array<{ name: string; value: string; options: CookieOptions }>) => {
         try {
-          list.forEach(({ name, value, options }) => store.set(name, value, options as CookieOptions));
+          list.forEach(({ name, value, options }) => store.set(name, value, options));
         } catch {
           // RSCs cannot set cookies — set during Route Handlers / Server Actions only.
         }

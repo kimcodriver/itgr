@@ -14,7 +14,8 @@ export async function middleware(req: NextRequest) {
   const sb = createServerClient(url, anon, {
     cookies: {
       getAll: () => req.cookies.getAll(),
-      setAll: (list) => list.forEach(({ name, value, options }) => res.cookies.set(name, value, options)),
+      setAll: (list: Array<{ name: string; value: string; options: import("@supabase/ssr").CookieOptions }>) =>
+        list.forEach(({ name, value, options }) => res.cookies.set(name, value, options)),
     },
   });
   await sb.auth.getUser();

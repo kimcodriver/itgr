@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
+  // Pin workspace root to avoid Turbopack picking up a parent lockfile
+  turbopack: {
+    root: path.join(import.meta.dirname),
+  },
   // Self-audit: control #55 — internal/external comms control
   async headers() {
     return [
