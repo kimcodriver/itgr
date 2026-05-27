@@ -1,67 +1,52 @@
 -- =============================================================
--- Autocorp ITGR Audit Tracker — initial schema (FY2026 one-off)
+-- Autocorp ITGR Audit Tracker — schema
 -- Maps to: spec/audit-tracking-system.md + spec/self-audit.md
+--
+-- Open-access design:
+--   - No Supabase Auth, no profiles table.
+--   - BFF uses service_role exclusively; browser never connects.
+--   - RLS is disabled on all tables (the BFF is the only client).
+--   - Actor attribution is the self-declared "Acting as" cookie name,
+--     stored as plain text alongside IP + UA captured from request headers.
 -- =============================================================
 
--- ----- Extensions -----
 create extension if not exists "uuid-ossp";
 create extension if not exists pgcrypto;
 
 -- =============================================================
--- profiles — one row per Supabase auth user
--- Self-audit: C2-13 access control, C2-19 no shared accounts, C2-20 disable unused
--- =============================================================
-create table public.profiles (
-  id              uuid primary key references auth.users(id) on delete cascade,
-  email           text unique not null,
-  display_name    text,
-  role            text not null default 'observer'
-                  check (role in ('audit_lead','it_engineer','observer')),
-  active          boolean not null default true,
-  last_sign_in_at timestamptz,
-  ui_prefs        jsonb not null default '{"lang":"th","theme":"system"}'::jsonb,
-  created_at      timestamptz not null default now()
-);
-comment on table public.profiles is
-  'One row per app user. role drives RLS. active=false blocks sign-in (control C2-20).';
-
--- =============================================================
--- controls — 96 ITGR controls catalogue (seeded once)
--- Self-audit: source-of-truth, treat as immutable framework data
+-- controls — 96 ITGR controls (seeded once from data/audit_data.json)
 -- =============================================================
 create table public.controls (
-  no               int primary key,
-  category         text not null,
-  category_short   text not null,
-  category_th      text not null,
-  category_short_th text not null,
-  name             text not null,
-  name_th          text,
-  question         text not null,
-  standards        text not null,
-  evidence_req     text,
-  article          text,
-  risk             text not null check (risk in ('Very High','High','Middle','Low')),
-  qtype            text,
-  note_file        text,
-  owner_id         uuid references public.profiles(id),
-  verdict          text not null default 'unset'
-                   check (verdict in ('unset','comply','partial','non','na')),
-  finding          text,
-  finding_th       text,
-  recommendation   text,
-  recommendation_th text,
-  updated_by       uuid references public.profiles(id),
-  updated_at       timestamptz not null default now()
+  no                 int primary key,
+  category           text not null,
+  category_short     text not null,
+  category_th        text not null,
+  category_short_th  text not null,
+  name               text not null,
+  name_th            text,
+  question           text not null,
+  standards          text not null,
+  evidence_req       text,
+  article            text,
+  risk               text not null check (risk in ('Very High','High','Middle','Low')),
+  qtype              text,
+  note_file          text,
+  owner_name         text,                                  -- optional, self-declared
+  verdict            text not null default 'unset'
+                     check (verdict in ('unset','comply','partial','non','na')),
+  finding            text,
+  finding_th         text,
+  recommendation     text,
+  recommendation_th  text,
+  updated_by         text,                                  -- self-declared name
+  updated_at         timestamptz not null default now()
 );
-create index idx_controls_owner on public.controls(owner_id);
 create index idx_controls_verdict on public.controls(verdict);
 comment on table public.controls is
-  '96 Marubeni ITGR controls. Owner = IT engineer assigned. Verdict set by audit_lead only.';
+  '96 Marubeni ITGR controls. Verdict updated via BFF; defensibility guard in server action ensures ≥1 verified evidence before comply/partial.';
 
 -- =============================================================
--- evidence_links — paste-a-Drive-link records
--- Self-audit: C8-86 file storage (links not files), C8-87 designation, C8-92 detection of removal
+-- evidence_links — Drive URL index, kind=legacy|new
 -- =============================================================
 create table public.evidence_links (
   id              uuid primary key default gen_random_uuid(),
@@ -70,15 +55,14 @@ create table public.evidence_links (
   drive_url       text not null,
   title           text,
   note            text check (length(note) <= 500),
-  submitted_by    uuid not null references public.profiles(id),
+  submitted_by    text,                                     -- self-declared
   submitted_at    timestamptz not null default now(),
-  verified_by     uuid references public.profiles(id),
+  verified_by     text,
   verified_at     timestamptz,
-  rejected_by     uuid references public.profiles(id),
+  rejected_by     text,
   rejected_at     timestamptz,
   rejected_reason text,
   archived_at     timestamptz,
-  -- Soft uniqueness on URL per control (lets re-submit after delete)
   constraint evidence_url_format
     check (drive_url ~* '^https?://(drive|docs|sheets)\.google\.com/')
 );
@@ -88,40 +72,37 @@ create unique index uq_evidence_active
 create index idx_evidence_control on public.evidence_links(control_no);
 create index idx_evidence_pending on public.evidence_links(control_no)
   where verified_at is null and rejected_at is null and archived_at is null;
-comment on table public.evidence_links is
-  'Drive URL index. kind=legacy points to pre-existing audit drive; kind=new = FY2026 drive.';
 
 -- =============================================================
--- audit_log — immutable event ledger
--- Self-audit: C7-75 important-system logs, C8-92 detection of removal,
---             C8-94 leakage prevention (immutability)
--- Inserts only — no UPDATE / DELETE granted to any role except service_role.
+-- audit_log — append-only event ledger
+-- BFF inserts only. No UPDATE/DELETE expected.
+-- Self-audit: C7-75 (logs), C8-92 (detection of removal).
 -- =============================================================
 create table public.audit_log (
   id          uuid primary key default gen_random_uuid(),
   ts          timestamptz not null default now(),
-  actor_id    uuid references public.profiles(id),
-  actor_email text,
-  action      text not null,        -- e.g. 'evidence.submit','verdict.change','user.invite','user.role.change','session.signin'
-  target_kind text,                 -- e.g. 'control','evidence','profile'
-  target_id   text,                 -- string form (control no, evidence uuid, etc.)
+  actor_id    uuid,                                        -- reserved for future auth
+  actor_email text,                                        -- self-declared via cookie
+  action      text not null,
+  target_kind text,
+  target_id   text,
   before      jsonb,
   after       jsonb,
   request_ip  inet,
   user_agent  text
 );
 create index idx_audit_ts on public.audit_log(ts desc);
-create index idx_audit_actor on public.audit_log(actor_id);
+create index idx_audit_actor on public.audit_log(actor_email);
 create index idx_audit_action on public.audit_log(action);
 create index idx_audit_target on public.audit_log(target_kind, target_id);
 comment on table public.audit_log is
-  'Immutable event log. No UPDATE/DELETE policies granted — only inserts from BFF service-role.';
+  'Append-only event log. BFF (service_role) inserts only. No update/delete needed (immutable by convention).';
 
 -- =============================================================
--- verdict_history — derived from audit_log but indexed for fast UI display
+-- v_verdict_history — derived view from audit_log
 -- =============================================================
-create view public.v_verdict_history as
-  select id, ts, actor_id, actor_email, target_id::int as control_no,
+create or replace view public.v_verdict_history as
+  select id, ts, actor_email, target_id::int as control_no,
          before->>'verdict' as old_verdict,
          after->>'verdict'  as new_verdict,
          after->>'note'     as note
@@ -129,12 +110,12 @@ create view public.v_verdict_history as
   where action = 'verdict.change';
 
 -- =============================================================
--- snapshots — refresh-on-demand frozen dashboard state
+-- snapshots — frozen dashboard state on Refresh
 -- =============================================================
 create table public.snapshots (
   id            uuid primary key default gen_random_uuid(),
   taken_at      timestamptz not null default now(),
-  taken_by      uuid not null references public.profiles(id),
+  taken_by      text,
   score         numeric(5,2) not null,
   status_counts jsonb not null,
   risk_status   jsonb not null,
@@ -156,3 +137,33 @@ begin new.updated_at = now(); return new; end $$;
 create trigger trg_controls_updated
   before update on public.controls
   for each row execute function public.set_updated_at();
+
+-- =============================================================
+-- RPC helpers
+-- =============================================================
+create or replace function public.compute_score()
+returns numeric language sql stable as $$
+  select round(
+    100.0 * sum(
+      case verdict
+        when 'comply'  then 1.0
+        when 'partial' then 0.5
+        else 0
+      end
+    ) / nullif(count(*) filter (where verdict <> 'na'), 0)
+  , 1)
+  from public.controls
+  where verdict <> 'unset'
+$$;
+
+create or replace function public.status_counts()
+returns table(comply int, partial int, non int, na int, unset int)
+language sql stable as $$
+  select
+    count(*) filter (where verdict='comply')::int,
+    count(*) filter (where verdict='partial')::int,
+    count(*) filter (where verdict='non')::int,
+    count(*) filter (where verdict='na')::int,
+    count(*) filter (where verdict='unset')::int
+  from public.controls
+$$;

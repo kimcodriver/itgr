@@ -1,15 +1,11 @@
 /**
- * /audit-log — immutable event ledger viewer.
- * Self-audit: C7-75, C8-92.
+ * /audit-log — immutable event ledger viewer. Open access.
  */
-import { requireUser } from "@/lib/auth";
 import { admin } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 const ACTION_LABEL: Record<string, string> = {
-  "session.signin":       "เข้าสู่ระบบ",
-  "session.signout":      "ออกจากระบบ",
   "evidence.submit":      "เพิ่มหลักฐาน",
   "evidence.edit":        "แก้ไขหลักฐาน",
   "evidence.archive":     "ลบหลักฐาน",
@@ -17,15 +13,11 @@ const ACTION_LABEL: Record<string, string> = {
   "evidence.reject":      "✗ ปฏิเสธหลักฐาน",
   "verdict.change":       "เปลี่ยนสถานะ control",
   "control.assign":       "มอบหมาย control",
-  "user.invite":          "เชิญผู้ใช้",
-  "user.role.change":     "เปลี่ยน role",
-  "user.deactivate":      "ปิดบัญชีผู้ใช้",
   "snapshot.create":      "ทำ snapshot",
-  "self.review":          "ทบทวนผู้ใช้ (รายไตรมาส)",
+  "self.review":          "ทบทวน (รายไตรมาส)",
 };
 
 export default async function AuditLog({ searchParams }: { searchParams: Promise<{ action?: string; actor?: string }> }) {
-  await requireUser();
   const sp = await searchParams;
   let q = admin().from("audit_log").select("*").order("ts", { ascending: false }).limit(500);
   if (sp.action) q = q.eq("action", sp.action);
@@ -38,7 +30,7 @@ export default async function AuditLog({ searchParams }: { searchParams: Promise
         <div className="flex items-baseline justify-between">
           <div>
             <div className="text-base font-bold">Audit Log</div>
-            <div className="text-[11px] t-dim">บันทึกเหตุการณ์แบบ immutable — 500 รายการล่าสุด · ผู้ใช้ไม่สามารถลบหรือแก้ไข</div>
+            <div className="text-[11px] t-dim">บันทึกเหตุการณ์แบบ append-only — 500 รายการล่าสุด · ผู้กระทำมาจาก cookie "Acting as" + IP/UA</div>
           </div>
           <div className="text-xs t-muted">{data?.length ?? 0} events</div>
         </div>
@@ -59,7 +51,7 @@ export default async function AuditLog({ searchParams }: { searchParams: Promise
             {(data ?? []).map(r => (
               <tr key={r.id} className="border-b" style={{ borderColor: "var(--glass-soft-border)" }}>
                 <td className="py-1.5 px-3 tabular-nums t-muted">{new Date(r.ts).toLocaleString("th-TH")}</td>
-                <td className="py-1.5 px-3">{r.actor_email || "—"}</td>
+                <td className="py-1.5 px-3">{r.actor_email || <span className="t-faint">ไม่ระบุ</span>}</td>
                 <td className="py-1.5 px-3">
                   <span className="font-medium">{ACTION_LABEL[r.action] || r.action}</span>
                   <span className="t-dim ml-1 text-[10px]">{r.action}</span>

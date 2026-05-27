@@ -1,24 +1,22 @@
 /**
  * /controls — list all 96 controls with current status + evidence count.
+ * Open access (no login).
  */
-import { requireUser } from "@/lib/auth";
-import { rsc, admin } from "@/lib/supabase/server";
+import { admin } from "@/lib/supabase/server";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function ControlsList({ searchParams }: { searchParams: Promise<{ status?: string; cat?: string }> }) {
-  await requireUser();
   const sp = await searchParams;
-  const sb = await rsc();
+  const sb = admin();
 
   let q = sb.from("controls").select("no,name,name_th,verdict,risk,category_short,category_short_th").order("no");
   if (sp.status) q = q.eq("verdict", sp.status);
   if (sp.cat) q = q.eq("category_short", sp.cat);
   const { data: controls } = await q;
 
-  const { data: evid } = await admin().from("evidence_links")
-    .select("control_no,verified_at,archived_at");
+  const { data: evid } = await sb.from("evidence_links").select("control_no,verified_at,archived_at");
   const evidMap = new Map<number, { total: number; verified: number }>();
   for (const e of evid ?? []) {
     if (e.archived_at) continue;

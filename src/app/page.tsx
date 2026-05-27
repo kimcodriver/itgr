@@ -1,9 +1,7 @@
 /**
- * Dashboard — overall status.
- * Server Component: reads aggregate state from Supabase, never sends service-role to client.
+ * Dashboard — overall status. Open access (no login).
  */
-import { requireUser } from "@/lib/auth";
-import { rsc, admin } from "@/lib/supabase/server";
+import { admin } from "@/lib/supabase/server";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -11,20 +9,19 @@ export const dynamic = "force-dynamic";
 type StatusCounts = { comply: number; partial: number; non: number; na: number; unset: number };
 
 export default async function Dashboard() {
-  await requireUser();
-  const sb = await rsc();
+  const sb = admin();
 
   const [scoreRes, countsRes, ctrlRes, evidRes] = await Promise.all([
     sb.rpc("compute_score"),
     sb.rpc("status_counts"),
     sb.from("controls").select("no,name,name_th,verdict,risk,category_short,category_short_th", { count: "exact" }),
-    admin().from("evidence_links").select("control_no,verified_at,kind"),
+    sb.from("evidence_links").select("control_no,verified_at,kind,archived_at"),
   ]);
 
   const score = (scoreRes.data as number | null) ?? 0;
   const counts: StatusCounts = (countsRes.data as unknown as StatusCounts[])?.[0] ?? { comply: 0, partial: 0, non: 0, na: 0, unset: 96 };
   const controls = ctrlRes.data ?? [];
-  const evid = evidRes.data ?? [];
+  const evid = (evidRes.data ?? []).filter(e => !e.archived_at);
 
   const total = controls.length;
   const evidByControl = new Map<number, { total: number; verified: number; legacy: number; new_: number }>();
