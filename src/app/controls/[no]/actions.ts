@@ -31,6 +31,16 @@ async function safeRun(controlNo: number | string, fn: () => Promise<void>) {
   }
 }
 
+/** Invalidate every page that aggregates evidence/verdict state. */
+function revalidateAll(controlNo: number | string) {
+  revalidatePath(`/controls/${controlNo}`);
+  revalidatePath("/controls");
+  revalidatePath("/mindmap");
+  revalidatePath("/audit-log");
+  revalidatePath("/admin");
+  revalidatePath("/");
+}
+
 const evidenceSchema = z.object({
   control_no: z.coerce.number().int().min(1).max(96),
   drive_url: z.string().url().regex(/^https?:\/\/(drive|docs|sheets)\.google\.com\//, "ต้องเป็น URL ของ drive/docs/sheets.google.com"),
@@ -60,7 +70,7 @@ export async function submitEvidence(formData: FormData) {
       targetKind: "evidence", targetId: data.id,
       after: { control_no: parsed.control_no, kind: parsed.kind, drive_url: parsed.drive_url, title: parsed.title },
     });
-    revalidatePath(`/controls/${parsed.control_no}`);
+    revalidateAll(parsed.control_no);
     redirect(`/controls/${parsed.control_no}?ok=${encodeURIComponent("เพิ่ม evidence สำเร็จ")}`);
   });
 }
@@ -78,7 +88,8 @@ export async function archiveEvidence(formData: FormData) {
       targetKind: "evidence", targetId: id,
       before: { control_no: e.control_no },
     });
-    revalidatePath(`/controls/${e.control_no}`);
+    revalidateAll(e.control_no);
+    redirect(`/controls/${e.control_no}?ok=${encodeURIComponent("ลบ evidence สำเร็จ")}`);
   });
 }
 
@@ -95,7 +106,7 @@ export async function verifyEvidence(formData: FormData) {
     }).eq("id", id);
     if (error) throw new Error(`Verify ไม่สำเร็จ: ${error.message}`);
     await logEvent({ action: "evidence.verify", targetKind: "evidence", targetId: id });
-    revalidatePath(`/controls/${e.control_no}`);
+    revalidateAll(e.control_no);
   });
 }
 
@@ -120,7 +131,7 @@ export async function attachEvidenceUrl(formData: FormData) {
       before: { drive_url: before.drive_url },
       after: { drive_url: parsed.drive_url, title: before.title },
     });
-    revalidatePath(`/controls/${before.control_no}`);
+    revalidateAll(before.control_no);
   });
 }
 
@@ -140,7 +151,7 @@ export async function rejectEvidence(formData: FormData) {
       action: "evidence.reject",
       targetKind: "evidence", targetId: id, after: { reason },
     });
-    revalidatePath(`/controls/${e.control_no}`);
+    revalidateAll(e.control_no);
   });
 }
 
@@ -194,8 +205,7 @@ export async function setVerdict(formData: FormData) {
       targetKind: "control", targetId: parsed.control_no,
       before, after: parsed,
     });
-    revalidatePath(`/controls/${parsed.control_no}`);
-    revalidatePath("/");
+    revalidateAll(parsed.control_no);
     redirect(`/controls/${parsed.control_no}?ok=${encodeURIComponent("บันทึก verdict สำเร็จ")}`);
   });
 }
