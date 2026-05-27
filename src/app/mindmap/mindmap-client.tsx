@@ -83,7 +83,7 @@ export default function MindmapClient({ data, lang }: { data: MindmapData; lang:
       if (catFilter !== "all" && c.category_short !== catFilter) return;
       const id = "c:" + c.no;
       const label = lang === "th" && c.name_th ? `#${c.no} ${c.name_th}` : `#${c.no} ${c.name}`;
-      nodes.push({ id, name: label, group: "control", r: 7, record: c } as ControlNode);
+      nodes.push({ id, name: label, group: "control", r: 13, record: c } as ControlNode);
       links.push({ source: "cat:" + c.category_short, target: id, type: "control" });
     });
 
@@ -138,6 +138,7 @@ export default function MindmapClient({ data, lang }: { data: MindmapData; lang:
 
     node.append("title").text(n => n.name);
 
+    // Labels above root + category nodes (outside circle)
     node.filter(n => n.group === "root" || n.group === "category")
       .append("text")
       .attr("text-anchor", "middle").attr("dy", n => -(n.r + 8))
@@ -147,14 +148,25 @@ export default function MindmapClient({ data, lang }: { data: MindmapData; lang:
       .style("text-shadow", "0 1px 4px rgba(0,0,0,0.5)")
       .text(n => n.name.length > 36 ? n.name.slice(0, 34) + "…" : n.name);
 
+    // Number inside control nodes — visible at-a-glance overview
+    node.filter(n => n.group === "control")
+      .append("text")
+      .attr("text-anchor", "middle").attr("dy", "0.35em")
+      .style("font-weight", "800").style("pointer-events", "none")
+      .style("font-size", "10px")
+      .style("fill", "#fff")
+      .style("text-shadow", "0 1px 2px rgba(0,0,0,0.45), 0 0 1px rgba(0,0,0,0.7)")
+      .style("letter-spacing", "-0.02em")
+      .text(n => (n as ControlNode).record.no);
+
     type SimLink = d3.SimulationLinkDatum<SimNode> & Link;
     const sim = d3.forceSimulation<SimNode>(nodes as SimNode[])
       .force("link", d3.forceLink<SimNode, SimLink>(links as never)
         .id(d => (d as Node).id)
-        .distance(l => l.type === "taxonomy" ? 200 : 75))
-      .force("charge", d3.forceManyBody<SimNode>().strength((n) => (n as Node).group === "root" ? -900 : (n as Node).group === "category" ? -340 : -65))
+        .distance(l => l.type === "taxonomy" ? 220 : 90))
+      .force("charge", d3.forceManyBody<SimNode>().strength((n) => (n as Node).group === "root" ? -1000 : (n as Node).group === "category" ? -380 : -110))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collide", d3.forceCollide<SimNode>(d => (d as Node).r + 4));
+      .force("collide", d3.forceCollide<SimNode>(d => (d as Node).r + 6));
 
     sim.on("tick", () => {
       link
