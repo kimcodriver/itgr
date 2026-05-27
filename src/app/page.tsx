@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 type StatusCounts = { comply: number; partial: number; non: number; na: number; unset: number };
 
 export default async function Dashboard() {
-  await requireUser();
+  const user = await requireUser();
   const sb = admin();
 
   const [scoreRes, countsRes, ctrlRes, evidRes] = await Promise.all([
@@ -26,6 +26,34 @@ export default async function Dashboard() {
   const evid = (evidRes.data ?? []).filter(e => !e.archived_at);
 
   const total = controls.length;
+
+  // Empty-state — first-time setup, no controls seeded yet
+  if (total === 0) {
+    return (
+      <div className="max-w-2xl mx-auto mt-12">
+        <div className="glass rounded-3xl p-8 text-center space-y-4">
+          <div className="text-5xl">📋</div>
+          <div className="text-xl font-bold">ยังไม่มี controls ในระบบ</div>
+          <div className="text-sm t-muted">
+            ระบบยังไม่ถูก seed — ต้องโหลด 96 ITGR controls จาก <code>data/audit_data.json</code> ลง database ก่อน
+          </div>
+          {user.role === "admin" ? (
+            <div className="pt-2">
+              <Link href="/admin" className="inline-block px-5 py-2.5 rounded-xl text-sm font-semibold"
+                style={{ background: "#818cf8", color: "#fff" }}>
+                ไปหน้า Admin → กด "Seed 96 controls"
+              </Link>
+            </div>
+          ) : (
+            <div className="text-xs t-dim pt-2">
+              แจ้ง admin ของระบบให้ไปกด seed ที่หน้า <code>/admin</code> · คุณยังไม่ใช่ admin
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const evidByControl = new Map<number, { total: number; verified: number; legacy: number; new_: number }>();
   for (const e of evid) {
     const r = evidByControl.get(e.control_no) ?? { total: 0, verified: 0, legacy: 0, new_: 0 };

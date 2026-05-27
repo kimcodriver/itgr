@@ -24,11 +24,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </div>
             </Link>
             {user && (
-              <nav className="ml-auto flex gap-1 text-sm">
+              <nav className="ml-auto flex gap-1 text-sm flex-wrap">
                 {[
                   ["/", "แดชบอร์ด"],
                   ["/controls", "Controls"],
                   ["/audit-log", "Audit Log"],
+                  ...(user.role === "admin" ? [["/admin", "Admin"]] : []),
                 ].map(([href, label]) => (
                   <Link key={href} href={href} className="px-3 py-1.5 rounded-lg hover-bg t-muted">{label}</Link>
                 ))}
