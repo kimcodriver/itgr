@@ -4,18 +4,38 @@
 -- Some Supabase projects were set up with an earlier version of
 -- 0001_init.sql where person-columns (submitted_by, verified_by,
 -- rejected_by, owner_id, updated_by, taken_by) were uuid FKs to
--- a profiles table. The current code passes plain text (the user's
--- display_name or email), which fails on the uuid columns with:
+-- a profiles table, plus RLS policies that referenced submitted_by.
+-- The current code passes plain text (the user's display_name or
+-- email), which fails on the uuid columns with:
 --
 --   invalid input syntax for type uuid: "kimcodriver"
 --
--- This migration converts those columns to text + drops any FK
--- constraints. It is idempotent: each step is wrapped in a DO block
--- with EXCEPTION handling so the migration succeeds whether the
--- columns are already text, uuid, or absent.
+-- This migration:
+--   1. Drops the legacy RLS policies that reference the columns
+--      (otherwise ALTER TYPE fails with "cannot alter type of a
+--      column used in a policy definition").
+--   2. Drops any FK constraints to profiles.
+--   3. Converts the columns to text.
+--   4. Leaves RLS enabled but with NO policies on tables other than
+--      `profiles` — the BFF uses service_role exclusively, which
+--      bypasses RLS. Default-deny for anon = belt and braces.
+--
+-- Idempotent: each step is wrapped in a DO block with EXCEPTION
+-- handling. Safe to re-run on any DB state (fresh, partial, fully
+-- migrated).
 -- =============================================================
 
--- ---- evidence_links ----
+-- ---- Step 1: drop legacy policies that reference these columns ----
+DO $$ BEGIN
+  DROP POLICY IF EXISTS evidence_own_update ON public.evidence_links;
+  DROP POLICY IF EXISTS evidence_insert     ON public.evidence_links;
+  DROP POLICY IF EXISTS evidence_read       ON public.evidence_links;
+  DROP POLICY IF EXISTS controls_read       ON public.controls;
+  DROP POLICY IF EXISTS auditlog_read       ON public.audit_log;
+  DROP POLICY IF EXISTS snapshots_read      ON public.snapshots;
+EXCEPTION WHEN undefined_table THEN NULL; END $$;
+
+-- ---- Step 2: drop FK constraints ----
 DO $$ BEGIN
   ALTER TABLE public.evidence_links DROP CONSTRAINT IF EXISTS evidence_links_submitted_by_fkey;
   ALTER TABLE public.evidence_links DROP CONSTRAINT IF EXISTS evidence_links_verified_by_fkey;
@@ -76,3 +96,14 @@ EXCEPTION WHEN undefined_table THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE public.audit_log ALTER COLUMN actor_id DROP NOT NULL;
 EXCEPTION WHEN undefined_column OR undefined_table THEN NULL; END $$;
+
+-- ---- Optional: keep RLS on but default-deny (defense-in-depth) ----
+-- Since the BFF uses service_role exclusively (bypasses RLS), keeping
+-- RLS enabled with zero policies on these tables means anon key can
+-- never read them — useful if a key ever leaks.
+DO $$ BEGIN
+  ALTER TABLE public.evidence_links ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE public.controls       ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE public.audit_log      ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE public.snapshots      ENABLE ROW LEVEL SECURITY;
+EXCEPTION WHEN undefined_table THEN NULL; END $$;
