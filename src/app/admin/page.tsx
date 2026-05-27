@@ -4,7 +4,7 @@
  */
 import { requireAdmin } from "@/lib/auth";
 import { admin } from "@/lib/supabase/server";
-import { seedControls, promoteUser, demoteUser } from "./actions";
+import { seedControls, seedEvidenceTemplates, clearEvidenceTemplates, promoteUser, demoteUser } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +15,14 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   const { count: controlCount } = await sb.from("controls").select("*", { count: "exact", head: true });
   const { data: users } = await sb.from("profiles").select("id,email,display_name,role,created_at").order("created_at");
+
+  // Evidence template stats
+  const { data: sysEvid } = await sb.from("evidence_links")
+    .select("control_no,drive_url,verified_at")
+    .eq("submitted_by", "system").is("archived_at", null);
+  const sysCount = sysEvid?.length ?? 0;
+  const sysPending = (sysEvid ?? []).filter(e => !e.drive_url).length;
+  const sysCoveredControls = new Set((sysEvid ?? []).map(e => e.control_no)).size;
 
   return (
     <div className="max-w-4xl mx-auto mt-2 space-y-5">
@@ -50,6 +58,39 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               Seed 96 controls
             </button>
           </form>
+        </div>
+      </div>
+
+      {/* Seed evidence templates */}
+      <div className="glass rounded-3xl p-5 space-y-3">
+        <div>
+          <div className="text-sm font-semibold">Evidence templates (จาก ITGR Appendix F)</div>
+          <div className="text-[11px] t-dim mt-0.5">
+            อ่านคอลัมน์ "Confirmation evidence" ของแต่ละ control แล้วสร้าง evidence row พร้อมชื่อให้ก่อน · <b>Drive link ว่าง</b> รอแนบทีหลัง
+            · <code>submitted_by=system</code> · idempotent (กดซ้ำได้)
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="text-3xl font-black tabular-nums"
+            style={{ color: sysCount > 0 ? "#22d3ee" : "var(--text-dim)" }}>
+            {sysCount}<span className="text-sm t-dim font-normal"> rows</span>
+          </div>
+          <div className="flex-1 text-xs t-muted">
+            ครอบคลุม <b>{sysCoveredControls} / 96</b> controls · <span style={{ color: "#f59e0b" }}>{sysPending} ยังไม่มี link</span>
+            {sysCount === 0 && <div className="t-dim mt-1">กดปุ่มเพื่อสร้างจาก template — อ่านจาก data/audit_data.json</div>}
+          </div>
+          <form action={seedEvidenceTemplates}>
+            <button className="px-4 py-2.5 rounded-xl text-sm font-semibold" style={{ background: "#22d3ee", color: "#003a4a" }}>
+              Seed evidence templates
+            </button>
+          </form>
+          {sysCount > 0 && (
+            <form action={clearEvidenceTemplates}>
+              <button className="px-3 py-2.5 rounded-xl text-xs font-medium glass-soft hover-bg t-muted">
+                ล้าง template ที่ยังไม่ verified
+              </button>
+            </form>
+          )}
         </div>
       </div>
 

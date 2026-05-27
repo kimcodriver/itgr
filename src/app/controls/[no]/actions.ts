@@ -69,6 +69,31 @@ export async function verifyEvidence(formData: FormData) {
   revalidatePath(`/controls/${e.control_no}`);
 }
 
+// Attach (or update) the Drive URL on an evidence row that was seeded without one.
+const attachSchema = z.object({
+  id: z.string().uuid(),
+  drive_url: z.string().url().regex(/^https?:\/\/(drive|docs|sheets)\.google\.com\//, "ต้องเป็น URL ของ drive/docs/sheets.google.com"),
+});
+export async function attachEvidenceUrl(formData: FormData) {
+  const user = await requireUser();
+  const parsed = attachSchema.parse({
+    id: formData.get("id"),
+    drive_url: formData.get("drive_url"),
+  });
+  const { data: before } = await admin().from("evidence_links")
+    .select("control_no,drive_url,title").eq("id", parsed.id).maybeSingle();
+  if (!before) throw new Error("Not found");
+  await admin().from("evidence_links").update({ drive_url: parsed.drive_url }).eq("id", parsed.id);
+  await logEvent({
+    action: "evidence.edit",
+    actorId: user.id, actorEmail: user.email,
+    targetKind: "evidence", targetId: parsed.id,
+    before: { drive_url: before.drive_url },
+    after: { drive_url: parsed.drive_url, title: before.title },
+  });
+  revalidatePath(`/controls/${before.control_no}`);
+}
+
 export async function rejectEvidence(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id"));

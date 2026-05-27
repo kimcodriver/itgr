@@ -11,7 +11,7 @@
 import { admin } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
 import { notFound } from "next/navigation";
-import { submitEvidence, archiveEvidence, verifyEvidence, rejectEvidence, setVerdict } from "./actions";
+import { submitEvidence, archiveEvidence, verifyEvidence, rejectEvidence, setVerdict, attachEvidenceUrl } from "./actions";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -62,47 +62,69 @@ export default async function ControlDetail({ params }: { params: Promise<{ no: 
           <div className="text-sm t-dim">ยังไม่มีหลักฐานสำหรับ control นี้ — กดเพิ่ม link Google Drive ด้านล่าง</div>
         )}
         <div className="space-y-2">
-          {(evid ?? []).map(e => (
-            <div key={e.id} className="glass-soft rounded-xl p-3 flex items-start gap-3">
-              <span className="marker mt-1.5 shrink-0"
-                style={{ background: e.verified_at ? "#10b981" : e.rejected_at ? "#f43f5e" : "#f59e0b" }} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap text-xs">
-                  <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold"
-                    style={{ background: e.kind === "legacy" ? "#22d3ee22" : "#818cf822",
-                             color: e.kind === "legacy" ? "#22d3ee" : "#818cf8",
-                             border: `1px solid ${e.kind === "legacy" ? "#22d3ee55" : "#818cf855"}` }}>
-                    {e.kind === "legacy" ? "LEGACY" : "FY2026 NEW"}
-                  </span>
-                  <a href={e.drive_url} target="_blank" rel="noopener noreferrer" className="font-medium truncate hover:underline">
-                    {e.title || e.drive_url}
-                  </a>
+          {(evid ?? []).map(e => {
+            const isPending = !e.drive_url;
+            const isSeeded = e.submitted_by === "system";
+            return (
+              <div key={e.id} className="glass-soft rounded-xl p-3 flex items-start gap-3"
+                style={isPending ? { borderLeft: "3px solid #f59e0b" } : undefined}>
+                <span className="marker mt-1.5 shrink-0"
+                  style={{ background: e.verified_at ? "#10b981" : e.rejected_at ? "#f43f5e" : isPending ? "#94a3b8" : "#f59e0b" }} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold"
+                      style={{ background: e.kind === "legacy" ? "#22d3ee22" : "#818cf822",
+                               color: e.kind === "legacy" ? "#22d3ee" : "#818cf8",
+                               border: `1px solid ${e.kind === "legacy" ? "#22d3ee55" : "#818cf855"}` }}>
+                      {e.kind === "legacy" ? "LEGACY" : "FY2026 NEW"}
+                    </span>
+                    {isSeeded && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold"
+                        style={{ background: "#94a3b822", color: "#94a3b8", border: "1px solid #94a3b855" }}>TEMPLATE</span>
+                    )}
+                    {isPending ? (
+                      <span className="font-medium truncate" style={{ color: "#f59e0b" }}>{e.title}</span>
+                    ) : (
+                      <a href={e.drive_url!} target="_blank" rel="noopener noreferrer" className="font-medium truncate hover:underline">
+                        {e.title || e.drive_url}
+                      </a>
+                    )}
+                  </div>
+                  {e.note && <div className="text-xs t-muted mt-1 whitespace-pre-wrap">{e.note}</div>}
+                  {isPending && (
+                    <form action={attachEvidenceUrl} className="mt-2 flex gap-1.5">
+                      <input type="hidden" name="id" value={e.id} />
+                      <input name="drive_url" type="url" required placeholder="https://drive.google.com/..."
+                        pattern="https?://(drive|docs|sheets)\.google\.com/.*"
+                        className="flex-1 px-2.5 py-1 rounded-lg glass-soft text-xs" />
+                      <button className="text-[10px] px-2.5 py-1 rounded font-semibold" style={{ background: "#22d3ee", color: "#003a4a" }}>📎 แนบ link</button>
+                    </form>
+                  )}
+                  <div className="text-[10px] t-dim mt-1">
+                    ส่งโดย {e.submitted_by || "ไม่ระบุ"} · {new Date(e.submitted_at).toLocaleString("th-TH")}
+                    {e.verified_at && <> · ✓ ผ่านโดย {e.verified_by || "ไม่ระบุ"} · {new Date(e.verified_at).toLocaleString("th-TH")}</>}
+                    {e.rejected_at && <> · ✗ ปฏิเสธ: {e.rejected_reason}</>}
+                  </div>
                 </div>
-                {e.note && <div className="text-xs t-muted mt-1 whitespace-pre-wrap">{e.note}</div>}
-                <div className="text-[10px] t-dim mt-1">
-                  ส่งโดย {e.submitted_by || "ไม่ระบุ"} · {new Date(e.submitted_at).toLocaleString("th-TH")}
-                  {e.verified_at && <> · ✓ ผ่านโดย {e.verified_by || "ไม่ระบุ"} · {new Date(e.verified_at).toLocaleString("th-TH")}</>}
-                  {e.rejected_at && <> · ✗ ปฏิเสธ: {e.rejected_reason}</>}
-                </div>
+                {!e.verified_at && !e.rejected_at && !isPending && (
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <form action={verifyEvidence}>
+                      <input type="hidden" name="id" value={e.id} />
+                      <button className="text-[10px] px-2 py-1 rounded glass-soft hover-bg" style={{ color: "#10b981" }}>✓ ผ่าน</button>
+                    </form>
+                    <form action={rejectEvidence}>
+                      <input type="hidden" name="id" value={e.id} />
+                      <button className="text-[10px] px-2 py-1 rounded glass-soft hover-bg" style={{ color: "#f43f5e" }}>✗ ปฏิเสธ</button>
+                    </form>
+                  </div>
+                )}
+                <form action={archiveEvidence}>
+                  <input type="hidden" name="id" value={e.id} />
+                  <button className="text-[10px] px-2 py-1 rounded glass-soft hover-bg t-dim">ลบ</button>
+                </form>
               </div>
-              {!e.verified_at && !e.rejected_at && (
-                <div className="flex flex-col gap-1 shrink-0">
-                  <form action={verifyEvidence}>
-                    <input type="hidden" name="id" value={e.id} />
-                    <button className="text-[10px] px-2 py-1 rounded glass-soft hover-bg" style={{ color: "#10b981" }}>✓ ผ่าน</button>
-                  </form>
-                  <form action={rejectEvidence}>
-                    <input type="hidden" name="id" value={e.id} />
-                    <button className="text-[10px] px-2 py-1 rounded glass-soft hover-bg" style={{ color: "#f43f5e" }}>✗ ปฏิเสธ</button>
-                  </form>
-                </div>
-              )}
-              <form action={archiveEvidence}>
-                <input type="hidden" name="id" value={e.id} />
-                <button className="text-[10px] px-2 py-1 rounded glass-soft hover-bg t-dim">ลบ</button>
-              </form>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <form action={submitEvidence} className="glass-soft rounded-xl p-4 mt-4 space-y-3">
