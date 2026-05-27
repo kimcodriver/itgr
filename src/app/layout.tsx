@@ -27,7 +27,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <nav className="ml-auto flex gap-1 text-sm flex-wrap">
                 {[
                   ["/", "แดชบอร์ด"],
-                  ["/controls", "Controls"],
+                  ["/controls", "Checklist"],
+                  ["/mindmap", "Mindmap"],
                   ["/audit-log", "Audit Log"],
                   ...(user.role === "admin" ? [["/admin", "Admin"]] : []),
                 ].map(([href, label]) => (

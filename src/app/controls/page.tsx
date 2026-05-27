@@ -1,5 +1,6 @@
 /**
- * /controls — list all 96 controls with current status + evidence count.
+ * /controls — checklist grouped by 8 ITGR categories.
+ * Each category card shows status mini-bar + collapsible list of controls.
  */
 import { admin } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth";
@@ -7,15 +8,20 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function ControlsList({ searchParams }: { searchParams: Promise<{ status?: string; cat?: string }> }) {
+type Row = {
+  no: number; name: string; name_th: string | null; verdict: string; risk: string;
+  category_short: string; category_short_th: string; category: string; category_th: string;
+};
+
+export default async function ControlsList({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   await requireUser();
   const sp = await searchParams;
   const sb = admin();
 
-  let q = sb.from("controls").select("no,name,name_th,verdict,risk,category_short,category_short_th").order("no");
-  if (sp.status) q = q.eq("verdict", sp.status);
-  if (sp.cat) q = q.eq("category_short", sp.cat);
-  const { data: controls } = await q;
+  const { data: controls } = await sb
+    .from("controls")
+    .select("no,name,name_th,verdict,risk,category,category_th,category_short,category_short_th")
+    .order("no");
 
   const { data: evid } = await sb.from("evidence_links").select("control_no,verified_at,archived_at");
   const evidMap = new Map<number, { total: number; verified: number }>();
@@ -26,8 +32,24 @@ export default async function ControlsList({ searchParams }: { searchParams: Pro
     evidMap.set(e.control_no, r);
   }
 
+  const filtered = (controls ?? []).filter(c => sp.status ? c.verdict === sp.status : true) as Row[];
+
+  // Group by category, preserve numeric order
+  const groups = new Map<string, { catShort: string; catShortTh: string; catFull: string; catFullTh: string; rows: Row[] }>();
+  for (const c of filtered) {
+    if (!groups.has(c.category_short)) {
+      groups.set(c.category_short, {
+        catShort: c.category_short, catShortTh: c.category_short_th,
+        catFull: c.category, catFullTh: c.category_th, rows: [],
+      });
+    }
+    groups.get(c.category_short)!.rows.push(c);
+  }
+  const ordered = Array.from(groups.values()).sort((a, b) => a.catShort.localeCompare(b.catShort));
+
   return (
-    <div className="max-w-7xl mx-auto mt-2 space-y-4">
+    <div className="max-w-6xl mx-auto mt-2 space-y-4">
+      {/* Filter bar */}
       <div className="glass rounded-3xl p-4 flex flex-wrap gap-2 items-center text-sm">
         <span className="t-dim text-xs uppercase tracking-widest">สถานะ:</span>
         <FilterLink current={sp.status} value={undefined} label="ทั้งหมด" />
@@ -35,49 +57,78 @@ export default async function ControlsList({ searchParams }: { searchParams: Pro
         <FilterLink current={sp.status} value="comply" label="ผ่าน" />
         <FilterLink current={sp.status} value="partial" label="ผ่านบางส่วน" />
         <FilterLink current={sp.status} value="non" label="ไม่ผ่าน" />
-        <span className="ml-auto text-xs t-muted">{controls?.length ?? 0} controls</span>
+        <span className="ml-auto text-xs t-muted">
+          <b>{filtered.length}</b> / {controls?.length ?? 0} controls · {ordered.length} หมวด
+        </span>
       </div>
 
-      <div className="glass rounded-3xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="text-[10px] uppercase tracking-widest t-dim">
-            <tr className="border-b" style={{ borderColor: "var(--glass-border)" }}>
-              <th className="text-left py-2 px-3 w-10">#</th>
-              <th className="text-left py-2 px-3">หมวด</th>
-              <th className="text-left py-2 px-3">Control</th>
-              <th className="text-center py-2 px-3 w-24">ความเสี่ยง</th>
-              <th className="text-center py-2 px-3 w-28">สถานะ</th>
-              <th className="text-center py-2 px-3 w-24">หลักฐาน</th>
-              <th className="text-right py-2 px-3 w-16"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(controls ?? []).map(c => {
-              const ev = evidMap.get(c.no) ?? { total: 0, verified: 0 };
-              return (
-                <tr key={c.no} className="border-b hover-bg" style={{ borderColor: "var(--glass-soft-border)" }}>
-                  <td className="py-2 px-3 font-bold tabular-nums">{c.no}</td>
-                  <td className="py-2 px-3 text-[11px] t-muted">{c.category_short_th}</td>
-                  <td className="py-2 px-3">
-                    <div className="font-medium">{c.name_th || c.name}</div>
-                    <div className="text-[10px] t-dim">{c.name}</div>
-                  </td>
-                  <td className="py-2 px-3 text-center"><RiskBadge risk={c.risk} /></td>
-                  <td className="py-2 px-3 text-center"><StatusBadge verdict={c.verdict} /></td>
-                  <td className="py-2 px-3 text-center text-xs">
-                    <span style={{ color: ev.verified > 0 ? "#10b981" : ev.total > 0 ? "#f59e0b" : "var(--text-dim)" }}>
-                      {ev.verified}/{ev.total}
-                    </span>
-                  </td>
-                  <td className="py-2 px-3 text-right">
-                    <Link href={`/controls/${c.no}`} className="px-2 py-1 rounded-md glass-soft hover-bg text-xs">→</Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {/* Empty state */}
+      {(controls?.length ?? 0) === 0 && (
+        <div className="glass rounded-3xl p-12 text-center space-y-3">
+          <div className="text-4xl">📋</div>
+          <div className="text-lg font-semibold">ยังไม่มี controls — กรุณา seed ที่หน้า Admin</div>
+        </div>
+      )}
+
+      {/* One card per category */}
+      {ordered.map(g => {
+        const sc = g.rows.reduce((a, r) => { a[r.verdict] = (a[r.verdict] || 0) + 1; return a; }, {} as Record<string, number>);
+        const tot = g.rows.length;
+        return (
+          <details key={g.catShort} open className="glass rounded-3xl group">
+            <summary className="px-5 py-4 cursor-pointer hover-bg rounded-3xl">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="text-sm font-bold grad-text">{g.catShortTh}</div>
+                <span className="text-[11px] t-dim">{g.catFull}</span>
+                <span className="ml-auto text-xs t-muted tabular-nums">{tot} controls</span>
+                <CategoryMiniBar sc={sc} tot={tot} />
+              </div>
+            </summary>
+            <div className="border-t" style={{ borderColor: "var(--glass-soft-border)" }}>
+              <table className="w-full text-sm">
+                <tbody>
+                  {g.rows.map(c => {
+                    const ev = evidMap.get(c.no) ?? { total: 0, verified: 0 };
+                    return (
+                      <tr key={c.no} className="border-b hover-bg" style={{ borderColor: "var(--glass-soft-border)" }}>
+                        <td className="py-2 px-4 font-bold tabular-nums t-dim w-12">{c.no}</td>
+                        <td className="py-2 px-3 w-28"><StatusBadge verdict={c.verdict} /></td>
+                        <td className="py-2 px-3 w-20"><RiskBadge risk={c.risk} /></td>
+                        <td className="py-2 px-3">
+                          <div className="font-medium">{c.name_th || c.name}</div>
+                          {c.name_th && <div className="text-[10px] t-dim">{c.name}</div>}
+                        </td>
+                        <td className="py-2 px-3 text-center text-xs w-20">
+                          <span style={{ color: ev.verified > 0 ? "#10b981" : ev.total > 0 ? "#f59e0b" : "var(--text-dim)" }}>
+                            {ev.verified}<span className="t-dim">/{ev.total}</span>
+                          </span>
+                          <div className="text-[9px] t-dim uppercase tracking-widest">หลักฐาน</div>
+                        </td>
+                        <td className="py-2 px-4 text-right w-16">
+                          <Link href={`/controls/${c.no}`} className="px-2.5 py-1 rounded-md glass-soft hover-bg text-xs">→</Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
+function CategoryMiniBar({ sc, tot }: { sc: Record<string, number>; tot: number }) {
+  const pct = (n: number) => tot ? (n / tot) * 100 : 0;
+  return (
+    <div className="w-44 h-2.5 rounded-full overflow-hidden flex" style={{ background: "var(--track-bg)" }}
+      title={`comply ${sc.comply || 0} · partial ${sc.partial || 0} · non ${sc.non || 0} · na ${sc.na || 0} · unset ${sc.unset || 0}`}>
+      <div style={{ width: `${pct(sc.comply || 0)}%`, background: "#10b981" }} />
+      <div style={{ width: `${pct(sc.partial || 0)}%`, background: "#f59e0b" }} />
+      <div style={{ width: `${pct(sc.non || 0)}%`, background: "#f43f5e" }} />
+      <div style={{ width: `${pct(sc.na || 0)}%`, background: "#94a3b8" }} />
     </div>
   );
 }
@@ -100,12 +151,13 @@ function StatusBadge({ verdict }: { verdict: string }) {
     na:      { c: "#94a3b8", l: "N/A" },
   };
   const v = map[verdict] || map.unset;
-  return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase"
+  return <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase whitespace-nowrap"
     style={{ background: v.c + "22", color: v.c, border: `1px solid ${v.c}55` }}>{v.l}</span>;
 }
 function RiskBadge({ risk }: { risk: string }) {
-  const map: Record<string, string> = { "Very High": "#f43f5e", "High": "#f97316", "Middle": "#eab308", "Low": "#3b82f6" };
-  const c = map[risk] || "#94a3b8";
-  return <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border"
-    style={{ borderColor: c + "55", color: c, background: c + "18" }}>{risk}</span>;
+  const thMap: Record<string, string> = { "Very High": "สูงมาก", "High": "สูง", "Middle": "ปานกลาง", "Low": "ต่ำ" };
+  const cMap: Record<string, string> = { "Very High": "#f43f5e", "High": "#f97316", "Middle": "#eab308", "Low": "#3b82f6" };
+  const c = cMap[risk] || "#94a3b8";
+  return <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap"
+    style={{ borderColor: c + "55", color: c, background: c + "18" }}>{thMap[risk] || risk}</span>;
 }
