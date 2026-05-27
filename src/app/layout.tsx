@@ -2,16 +2,42 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
 import { getUser } from "@/lib/auth";
+import { getPrefs } from "@/lib/prefs";
+import { useT } from "@/lib/i18n";
+import PrefsToggle from "./prefs-toggle";
 
 export const metadata: Metadata = {
   title: "ITGR Audit Tracker",
   description: "FY2026 audit tracking — Marubeni Group ITGR FY2025",
 };
 
+// Inline script that runs before React hydration. Resolves "system" theme
+// from prefers-color-scheme so the first paint matches user's OS.
+const themeBootScript = `
+(function() {
+  try {
+    var m = document.cookie.match(/(?:^|;\\s*)itgr_theme=([^;]+)/);
+    var pref = m ? m[1] : 'system';
+    var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  } catch (e) {}
+})();
+`;
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getUser();
+  const prefs = await getPrefs();
+  const t = useT(prefs.lang);
+
+  // Server-side initial guess for data-theme; client boot script + PrefsToggle
+  // will refine if cookie says 'system' and user OS prefers light.
+  const initialTheme = prefs.theme === "system" ? "dark" : prefs.theme;
+
   return (
-    <html lang="th" data-theme="dark">
+    <html lang={prefs.lang} data-theme={initialTheme}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body className="min-h-screen flex flex-col">
         <header className="sticky top-0 z-30 p-4 backdrop-blur">
           <div className="glass rounded-2xl px-5 py-3 flex items-center gap-4 flex-wrap">
@@ -24,19 +50,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </div>
             </Link>
             {user && (
-              <nav className="ml-auto flex gap-1 text-sm flex-wrap">
+              <nav className="flex gap-1 text-sm flex-wrap">
                 {[
-                  ["/", "แดชบอร์ด"],
-                  ["/controls", "Checklist"],
-                  ["/mindmap", "Mindmap"],
-                  ["/audit-log", "Audit Log"],
-                  ...(user.role === "admin" ? [["/admin", "Admin"]] : []),
+                  ["/", t("nav.dashboard")],
+                  ["/controls", t("nav.checklist")],
+                  ["/mindmap", t("nav.mindmap")],
+                  ["/audit-log", t("nav.auditlog")],
+                  ...(user.role === "admin" ? [["/admin", t("nav.admin")]] : []),
                 ].map(([href, label]) => (
                   <Link key={href} href={href} className="px-3 py-1.5 rounded-lg hover-bg t-muted">{label}</Link>
                 ))}
               </nav>
             )}
-            <div className="text-xs ml-auto flex items-center gap-2">
+            <div className="text-xs ml-auto flex items-center gap-2 flex-wrap">
+              <PrefsToggle lang={prefs.lang} theme={prefs.theme} />
               {user ? (
                 <>
                   <span className="marker" style={{ background: "#10b981" }} />
@@ -49,22 +76,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     </div>
                   </div>
                   <form action="/api/auth/signout" method="post">
-                    <button type="submit" className="px-2 py-1.5 rounded-md hover-bg text-xs">ออก</button>
+                    <button type="submit" className="px-2 py-1.5 rounded-md hover-bg text-xs">{t("nav.signout")}</button>
                   </form>
                 </>
               ) : (
                 <>
-                  <Link href="/sign-in" className="px-3 py-1.5 rounded-lg hover-bg">เข้าสู่ระบบ</Link>
-                  <Link href="/sign-up" className="px-3 py-1.5 rounded-lg" style={{ background: "#818cf8", color: "#fff" }}>ลงทะเบียน</Link>
+                  <Link href="/sign-in" className="px-3 py-1.5 rounded-lg hover-bg">{t("nav.signin")}</Link>
+                  <Link href="/sign-up" className="px-3 py-1.5 rounded-lg" style={{ background: "#818cf8", color: "#fff" }}>{t("nav.signup")}</Link>
                 </>
               )}
             </div>
           </div>
         </header>
         <main className="flex-1 px-4 pb-12">{children}</main>
-        <footer className="px-4 pb-6 pt-2 text-[10px] t-dim text-center">
-          Internal use only · Confidential · See <code>spec/self-audit.md</code> for compliance trail
-        </footer>
+        <footer className="px-4 pb-6 pt-2 text-[10px] t-dim text-center">{t("footer")}</footer>
       </body>
     </html>
   );
