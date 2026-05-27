@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
-import { getActor } from "@/lib/actor";
-import { setActor, clearActor } from "./actions";
+import { getUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "ITGR Audit Tracker",
@@ -10,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const actor = await getActor();
+  const user = await getUser();
   return (
     <html lang="th" data-theme="dark">
       <body className="min-h-screen flex flex-col">
@@ -24,35 +23,45 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <div className="font-bold truncate">ITGR Audit Tracker</div>
               </div>
             </Link>
-            <nav className="ml-auto flex gap-1 text-sm">
-              {[
-                ["/", "แดชบอร์ด"],
-                ["/controls", "Controls"],
-                ["/audit-log", "Audit Log"],
-              ].map(([href, label]) => (
-                <Link key={href} href={href} className="px-3 py-1.5 rounded-lg hover-bg t-muted">{label}</Link>
-              ))}
-            </nav>
-            <form action={setActor} className="flex items-center gap-2 text-xs">
-              <label className="t-dim text-[10px] uppercase tracking-widest">acting as</label>
-              <input name="name" defaultValue={actor.name ?? ""} maxLength={80}
-                placeholder="ระบุชื่อตัวเอง"
-                className="px-2.5 py-1 rounded-lg glass-soft text-xs w-44" />
-              <button className="px-2 py-1 rounded-md hover-bg text-[10px]">บันทึก</button>
-              {actor.name && (
-                <button formAction={clearActor} className="px-2 py-1 rounded-md hover-bg text-[10px] t-dim">ล้าง</button>
+            {user && (
+              <nav className="ml-auto flex gap-1 text-sm">
+                {[
+                  ["/", "แดชบอร์ด"],
+                  ["/controls", "Controls"],
+                  ["/audit-log", "Audit Log"],
+                ].map(([href, label]) => (
+                  <Link key={href} href={href} className="px-3 py-1.5 rounded-lg hover-bg t-muted">{label}</Link>
+                ))}
+              </nav>
+            )}
+            <div className="text-xs ml-auto flex items-center gap-2">
+              {user ? (
+                <>
+                  <span className="marker" style={{ background: "#10b981" }} />
+                  <div className="text-right leading-tight">
+                    <div className="font-medium">{user.displayName || user.email}</div>
+                    <div className="t-dim text-[10px]">
+                      {user.email}
+                      <span className="ml-2 px-1.5 py-0.5 rounded glass-soft uppercase tracking-widest text-[9px]"
+                        style={{ color: user.role === "admin" ? "#f59e0b" : "var(--text-dim)" }}>{user.role}</span>
+                    </div>
+                  </div>
+                  <form action="/api/auth/signout" method="post">
+                    <button type="submit" className="px-2 py-1.5 rounded-md hover-bg text-xs">ออก</button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <Link href="/sign-in" className="px-3 py-1.5 rounded-lg hover-bg">เข้าสู่ระบบ</Link>
+                  <Link href="/sign-up" className="px-3 py-1.5 rounded-lg" style={{ background: "#818cf8", color: "#fff" }}>ลงทะเบียน</Link>
+                </>
               )}
-            </form>
-          </div>
-          {!actor.name && (
-            <div className="max-w-md mx-auto mt-2 text-[11px] t-dim text-center">
-              ⓘ ใส่ชื่อด้านบนเพื่อให้ audit log จดบันทึกว่าเป็นใคร — เป็น optional
             </div>
-          )}
+          </div>
         </header>
         <main className="flex-1 px-4 pb-12">{children}</main>
         <footer className="px-4 pb-6 pt-2 text-[10px] t-dim text-center">
-          Open access · Confidential — Internal use only · See <code>spec/self-audit.md</code> for compliance trail
+          Internal use only · Confidential · See <code>spec/self-audit.md</code> for compliance trail
         </footer>
       </body>
     </html>

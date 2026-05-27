@@ -1,13 +1,14 @@
 /**
  * /controls — list all 96 controls with current status + evidence count.
- * Open access (no login).
  */
 import { admin } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function ControlsList({ searchParams }: { searchParams: Promise<{ status?: string; cat?: string }> }) {
+  await requireUser();
   const sp = await searchParams;
   const sb = admin();
 

@@ -1,7 +1,8 @@
 /**
- * Dashboard — overall status. Open access (no login).
+ * Dashboard — overall status. Requires sign-in (enforced by middleware + requireUser).
  */
 import { admin } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 type StatusCounts = { comply: number; partial: number; non: number; na: number; unset: number };
 
 export default async function Dashboard() {
+  await requireUser();
   const sb = admin();
 
   const [scoreRes, countsRes, ctrlRes, evidRes] = await Promise.all([

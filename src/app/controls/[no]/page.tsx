@@ -9,6 +9,7 @@
  * Attribution comes from the "Acting as" cookie (see src/lib/actor.ts).
  */
 import { admin } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { submitEvidence, archiveEvidence, verifyEvidence, rejectEvidence, setVerdict } from "./actions";
 import Link from "next/link";
@@ -16,6 +17,7 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 export default async function ControlDetail({ params }: { params: Promise<{ no: string }> }) {
+  await requireUser();
   const { no } = await params;
   const n = parseInt(no, 10);
   if (!Number.isFinite(n)) notFound();

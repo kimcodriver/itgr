@@ -1,12 +1,12 @@
 "use server";
 /**
- * Server actions for control detail — open access.
- * Every mutation calls logEvent which captures actor from cookie + IP/UA.
+ * Server actions for control detail.
+ * Every mutation calls logEvent which captures actor from the authenticated session + IP/UA.
  * Defensibility guard: cannot set verdict comply/partial without verified evidence.
  */
 import { admin } from "@/lib/supabase/server";
 import { logEvent } from "@/lib/audit";
-import { getActor } from "@/lib/actor";
+import { requireUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -19,7 +19,7 @@ const evidenceSchema = z.object({
 });
 
 export async function submitEvidence(formData: FormData) {
-  const actor = await getActor();
+  const user = await requireUser();
   const parsed = evidenceSchema.parse({
     control_no: formData.get("control_no"),
     drive_url: formData.get("drive_url"),
@@ -29,7 +29,7 @@ export async function submitEvidence(formData: FormData) {
   });
   const { data, error } = await admin().from("evidence_links").insert({
     ...parsed,
-    submitted_by: actor.name,
+    submitted_by: user.displayName || user.email,
   }).select().single();
   if (error) throw new Error(error.message);
   await logEvent({
@@ -54,12 +54,12 @@ export async function archiveEvidence(formData: FormData) {
 }
 
 export async function verifyEvidence(formData: FormData) {
-  const actor = await getActor();
+  const user = await requireUser();
   const id = String(formData.get("id"));
   const { data: e } = await admin().from("evidence_links").select("control_no").eq("id", id).maybeSingle();
   if (!e) throw new Error("Not found");
   await admin().from("evidence_links").update({
-    verified_by: actor.name, verified_at: new Date().toISOString(),
+    verified_by: user.displayName || user.email, verified_at: new Date().toISOString(),
     rejected_by: null, rejected_at: null, rejected_reason: null,
   }).eq("id", id);
   await logEvent({
@@ -70,13 +70,13 @@ export async function verifyEvidence(formData: FormData) {
 }
 
 export async function rejectEvidence(formData: FormData) {
-  const actor = await getActor();
+  const user = await requireUser();
   const id = String(formData.get("id"));
   const reason = String(formData.get("reason") || "").slice(0, 500) || "rejected";
   const { data: e } = await admin().from("evidence_links").select("control_no").eq("id", id).maybeSingle();
   if (!e) throw new Error("Not found");
   await admin().from("evidence_links").update({
-    rejected_by: actor.name, rejected_at: new Date().toISOString(), rejected_reason: reason,
+    rejected_by: user.displayName || user.email, rejected_at: new Date().toISOString(), rejected_reason: reason,
   }).eq("id", id);
   await logEvent({
     action: "evidence.reject",

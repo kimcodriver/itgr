@@ -1,7 +1,8 @@
 /**
- * /audit-log — immutable event ledger viewer. Open access.
+ * /audit-log — immutable event ledger viewer.
  */
 import { admin } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export default async function AuditLog({ searchParams }: { searchParams: Promise<{ action?: string; actor?: string }> }) {
+  await requireUser();
   const sp = await searchParams;
   let q = admin().from("audit_log").select("*").order("ts", { ascending: false }).limit(500);
   if (sp.action) q = q.eq("action", sp.action);
