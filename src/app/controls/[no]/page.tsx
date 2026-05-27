@@ -16,9 +16,10 @@ import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function ControlDetail({ params }: { params: Promise<{ no: string }> }) {
+export default async function ControlDetail({ params, searchParams }: { params: Promise<{ no: string }>; searchParams: Promise<{ error?: string; ok?: string }> }) {
   await requireUser();
   const { no } = await params;
+  const sp = await searchParams;
   const n = parseInt(no, 10);
   if (!Number.isFinite(n)) notFound();
 
@@ -37,6 +38,18 @@ export default async function ControlDetail({ params }: { params: Promise<{ no: 
 
   return (
     <div className="max-w-5xl mx-auto mt-2 space-y-4">
+      {sp.ok && (
+        <div className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "#10b98118", color: "#10b981", border: "1px solid #10b98155" }}>
+          ✓ {decodeURIComponent(sp.ok)}
+        </div>
+      )}
+      {sp.error && (
+        <div className="px-3 py-2 rounded-lg text-xs"
+          style={{ background: "#f43f5e18", color: "#f43f5e", border: "1px solid #f43f5e55" }}>
+          ⚠ {decodeURIComponent(sp.error)}
+        </div>
+      )}
       <div className="glass rounded-3xl p-5">
         <Link href="/controls" className="text-xs t-muted hover-bg px-2 py-1 rounded-md">← Controls</Link>
         <div className="flex items-baseline gap-3 mt-2 flex-wrap">
