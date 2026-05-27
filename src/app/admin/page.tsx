@@ -4,7 +4,8 @@
  */
 import { requireAdmin } from "@/lib/auth";
 import { admin } from "@/lib/supabase/server";
-import { seedControls, seedEvidenceTemplates, clearEvidenceTemplates, promoteUser, demoteUser } from "./actions";
+import { seedControls, wipeAndReseedControls, seedEvidenceTemplates, clearEvidenceTemplates, promoteUser, demoteUser } from "./actions";
+import WipeReseedButton from "./wipe-button";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               Seed 96 controls
             </button>
           </form>
+          <WipeReseedButton action={wipeAndReseedControls} />
         </div>
       </div>
 

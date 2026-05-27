@@ -39,8 +39,8 @@ function parseEvidenceTemplate(text: string | undefined | null): string[] {
 
 export async function seedControls() {
   const me = await requireAdmin();
+  const sb = admin();
 
-  // Read the bundled audit_data.json. In Vercel, process.cwd() = the project root.
   const dataPath = resolve(process.cwd(), "data/audit_data.json");
   let parsed: { records: RawRecord[] };
   try {
@@ -67,21 +67,66 @@ export async function seedControls() {
     note_file: r.note_file ?? null,
   }));
 
-  const { error } = await admin().from("controls").upsert(rows, { onConflict: "no" });
-  if (error) {
-    redirect("/admin?error=" + encodeURIComponent(error.message));
+  // Insert in small batches so a constraint failure on a single row doesn't
+  // silently kill the rest of the batch. (Supabase upsert error includes the
+  // row that broke — capture it in the redirect message.)
+  const BATCH = 25;
+  let inserted = 0;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const slice = rows.slice(i, i + BATCH);
+    const { error } = await sb.from("controls").upsert(slice, { onConflict: "no" });
+    if (error) {
+      const firstNo = slice[0]?.no;
+      const lastNo = slice[slice.length - 1]?.no;
+      redirect("/admin?error=" + encodeURIComponent(`Seed ล้มเหลวที่ batch #${firstNo}–${lastNo}: ${error.message}`));
+    }
+    inserted += slice.length;
   }
 
+  // Verify what's actually in the DB now
+  const { count: actualCount } = await sb.from("controls").select("*", { count: "exact", head: true });
+  const { data: nums } = await sb.from("controls").select("no");
+  const present = new Set((nums ?? []).map(r => r.no));
+  const expected = parsed.records.map(r => r.no);
+  const missing = expected.filter(n => !present.has(n));
+
   await logEvent({
-    action: "self.review",  // re-use existing action enum; describe in audit_log
+    action: "self.review",
     targetKind: "controls", targetId: "seed",
-    after: { row_count: rows.length, source: "data/audit_data.json", by: me.email },
+    after: { attempted: rows.length, db_count: actualCount, missing, source: "data/audit_data.json", by: me.email },
   });
 
   revalidatePath("/admin");
   revalidatePath("/");
   revalidatePath("/controls");
-  redirect("/admin?ok=" + encodeURIComponent(`Seed ${rows.length} controls สำเร็จ`));
+  revalidatePath("/mindmap");
+
+  if (missing.length > 0) {
+    redirect("/admin?error=" + encodeURIComponent(`Seed เสร็จแต่ DB มีแค่ ${actualCount}/96 · controls ที่ขาด: #${missing.join(", #")}`));
+  }
+  redirect("/admin?ok=" + encodeURIComponent(`Seed ${rows.length} controls สำเร็จ · DB มี ${actualCount} แถว`));
+}
+
+/** Wipe ALL controls + cascade delete their evidence_links, then re-seed.
+ *  For when the DB is in a known-bad state. */
+export async function wipeAndReseedControls() {
+  const me = await requireAdmin();
+  const sb = admin();
+
+  // Delete all controls (FK ON DELETE CASCADE on evidence_links removes their evidence)
+  // Use a always-true filter (no >= 0) since supabase-js requires a filter on delete.
+  const { error: delErr } = await sb.from("controls").delete().gte("no", 0);
+  if (delErr) redirect("/admin?error=" + encodeURIComponent(`Wipe ล้มเหลว: ${delErr.message}`));
+
+  await logEvent({
+    action: "self.review",
+    targetKind: "controls", targetId: "wipe",
+    before: { action: "delete all" },
+    after: { by: me.email },
+  });
+
+  // Now re-seed via the same path
+  return seedControls();
 }
 
 /**
